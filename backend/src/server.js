@@ -7,6 +7,7 @@ const { Op } = require('sequelize');
 const sequelize = require('./config/database');
 const User = require('./models/User');
 const RefreshToken = require('./models/RefreshToken');
+const Category = require('./models/Category');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,6 +19,15 @@ User.hasMany(RefreshToken, {
 });
 
 RefreshToken.belongsTo(User, {
+  foreignKey: 'user_id'
+});
+
+User.hasMany(Category, {
+  foreignKey: 'user_id',
+  onDelete: 'CASCADE'
+});
+
+Category.belongsTo(User, {
   foreignKey: 'user_id'
 });
 
@@ -37,6 +47,23 @@ function createAccessToken(user) {
 
 function createRefreshToken(user) {
   return jwt.sign({ userId: user.id, type: 'refresh' }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authorization token is required' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    return next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
 }
 
 app.post('/api/auth/register', async (req, res) => {
@@ -166,6 +193,49 @@ app.post('/api/auth/logout', async (req, res) => {
     return res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
     return res.status(500).json({ message: 'Logout failed', error: error.message });
+  }
+});
+
+app.get('/api/categories', authMiddleware, async (req, res) => {
+  try {
+    const categories = await Category.findAll({
+      where: {
+        [Op.or]: [
+          { userId: req.user.userId },
+          { userId: null }
+        ]
+      },
+      order: [['name', 'ASC']]
+    });
+
+    return res.status(200).json(categories);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch categories', error: error.message });
+  }
+});
+
+app.post('/api/categories', authMiddleware, async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const type = String(req.body.type || '').trim();
+
+    if (!name || name.length < 1 || name.length > 100) {
+      return res.status(400).json({ message: 'Category name must be 1-100 characters' });
+    }
+
+    if (!['income', 'expense'].includes(type)) {
+      return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    const category = await Category.create({
+      userId: req.user.userId,
+      name,
+      type
+    });
+
+    return res.status(201).json(category);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to create category', error: error.message });
   }
 });
 
