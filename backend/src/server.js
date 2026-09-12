@@ -8,6 +8,7 @@ const sequelize = require('./config/database');
 const User = require('./models/User');
 const RefreshToken = require('./models/RefreshToken');
 const Category = require('./models/Category');
+const Transaction = require('./models/Transaction');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -29,6 +30,23 @@ User.hasMany(Category, {
 
 Category.belongsTo(User, {
   foreignKey: 'user_id'
+});
+
+User.hasMany(Transaction, {
+  foreignKey: 'user_id',
+  onDelete: 'CASCADE'
+});
+
+Category.hasMany(Transaction, {
+  foreignKey: 'category_id'
+});
+
+Transaction.belongsTo(User, {
+  foreignKey: 'user_id'
+});
+
+Transaction.belongsTo(Category, {
+  foreignKey: 'category_id'
 });
 
 app.use(express.json());
@@ -236,6 +254,71 @@ app.post('/api/categories', authMiddleware, async (req, res) => {
     return res.status(201).json(category);
   } catch (error) {
     return res.status(500).json({ message: 'Failed to create category', error: error.message });
+  }
+});
+
+app.get('/api/transactions', authMiddleware, async (req, res) => {
+  try {
+    const transactions = await Transaction.findAll({
+      where: { userId: req.user.userId },
+      include: [
+        {
+          model: Category,
+          attributes: ['id', 'name', 'type']
+        }
+      ],
+      order: [['transactionDate', 'DESC']]
+    });
+
+    return res.status(200).json(transactions);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch transactions', error: error.message });
+  }
+});
+
+app.post('/api/transactions', authMiddleware, async (req, res) => {
+  try {
+    const categoryId = Number(req.body.category_id);
+    const amount = Number(req.body.amount);
+    const type = String(req.body.type || '').trim();
+    const description = req.body.description ? String(req.body.description).trim() : null;
+    const transactionDate = req.body.transaction_date ? String(req.body.transaction_date).trim() : null;
+
+    if (!categoryId || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Amount must be a positive number' });
+    }
+
+    if (!['income', 'expense'].includes(type)) {
+      return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    const category = await Category.findOne({
+      where: {
+        id: categoryId,
+        [Op.or]: [{ userId: req.user.userId }, { userId: null }]
+      }
+    });
+
+    if (!category) {
+      return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
+    }
+
+    if (!transactionDate) {
+      return res.status(400).json({ message: 'transaction_date is required' });
+    }
+
+    const transaction = await Transaction.create({
+      userId: req.user.userId,
+      categoryId,
+      amount,
+      type,
+      description,
+      transactionDate
+    });
+
+    return res.status(201).json(transaction);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to create transaction', error: error.message });
   }
 });
 
