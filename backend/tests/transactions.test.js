@@ -72,5 +72,45 @@ describe('Transactions API', () => {
     expect(transactionResponse.status).toBe(201);
     expect(transactionResponse.body.amount).toBe('450.50');
     expect(transactionResponse.body.type).toBe('expense');
+
+    const updateResponse = await request(app)
+      .put(`/api/transactions/${transactionResponse.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ amount: 500, description: 'Оновлені продукти' });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.amount).toBe('500.00');
+    expect(updateResponse.body.description).toBe('Оновлені продукти');
+
+    const secondTransactionResponse = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: categoryResponse.body.id,
+        amount: 100,
+        type: 'expense',
+        transaction_date: '2026-09-01'
+      });
+
+    expect(secondTransactionResponse.status).toBe(201);
+
+    const listResponse = await request(app)
+      .get('/api/transactions?from=2026-09-01&to=2026-09-30&category_id=' + categoryResponse.body.id + '&type=expense&page=1&limit=1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.items).toHaveLength(1);
+    expect(listResponse.body.pagination).toEqual({
+      page: 1,
+      limit: 1,
+      total: 2,
+      total_pages: 2
+    });
+
+    const deleteResponse = await request(app)
+      .delete(`/api/transactions/${transactionResponse.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(deleteResponse.status).toBe(204);
   });
 });

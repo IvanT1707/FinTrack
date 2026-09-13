@@ -60,5 +60,39 @@ describe('Categories API', () => {
 
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.some((category) => category.name === 'Продукти')).toBe(true);
+
+    const updateResponse = await request(app)
+      .put(`/api/categories/${createResponse.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Харчування', type: 'expense' });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.name).toBe('Харчування');
+
+    const deleteResponse = await request(app)
+      .delete(`/api/categories/${createResponse.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(deleteResponse.status).toBe(204);
+  });
+
+  test('allows CORS requests from the frontend origin', async () => {
+    const email = `cors-${Date.now()}@example.com`;
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email, password: 'SecurePass123', full_name: 'CORS User' });
+
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'SecurePass123' });
+
+    const response = await request(app)
+      .get('/api/categories')
+      .set('Authorization', `Bearer ${loginResponse.body.access_token}`)
+      .set('Origin', 'http://localhost:5173');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
   });
 });

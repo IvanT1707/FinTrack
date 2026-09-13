@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
@@ -16,6 +17,9 @@ const { forecastCategory } = require('./utils/forecast');
 const app = express();
 const port = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim());
 
 User.hasMany(RefreshToken, {
   foreignKey: 'user_id',
@@ -69,6 +73,16 @@ BudgetLimit.belongsTo(Category, {
   foreignKey: 'category_id'
 });
 
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Origin is not allowed by CORS'));
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
@@ -277,20 +291,128 @@ app.post('/api/categories', authMiddleware, async (req, res) => {
   }
 });
 
+app.put('/api/categories/:id', authMiddleware, async (req, res) => {
+  try {
+    const category = await Category.findOne({
+      where: {
+        id: Number(req.params.id),
+        userId: req.user.userId
+      }
+    });
+
+    if (!category) {
+      return res.status(404).json({ message: 'Category not found or is system-owned' });
+    }
+
+    const name = String(req.body.name ?? category.name).trim();
+    const type = String(req.body.type ?? category.type).trim();
+
+    if (!name || name.length > 100) {
+      return res.status(400).json({ message: 'Category name must be 1-100 characters' });
+    }
+
+    if (!['income', 'expense'].includes(type)) {
+      return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    await category.update({ name, type });
+    return res.status(200).json(category);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to update category', error: error.message });
+  }
+});
+
+app.delete('/api/categories/:id', authMiddleware, async (req, res) => {
+  try {
+    const category = await Category.findOne({
+      where: {
+        id: Number(req.params.id),
+        userId: req.user.userId
+      }
+    });
+
+    if (!category) {
+      return res.status(404).json({ message: 'Category not found or is system-owned' });
+    }
+
+    const [transactionCount, budgetLimitCount] = await Promise.all([
+      Transaction.count({ where: { categoryId: category.id, userId: req.user.userId } }),
+      BudgetLimit.count({ where: { categoryId: category.id, userId: req.user.userId } })
+    ]);
+
+    if (transactionCount > 0 || budgetLimitCount > 0) {
+      return res.status(409).json({
+        message: 'Category cannot be deleted while it is used by transactions or budget limits'
+      });
+    }
+
+    await category.destroy();
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to delete category', error: error.message });
+  }
+});
+
 app.get('/api/transactions', authMiddleware, async (req, res) => {
   try {
-    const transactions = await Transaction.findAll({
-      where: { userId: req.user.userId },
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+    const categoryId = req.query.category_id ? Number(req.query.category_id) : null;
+    const type = req.query.type ? String(req.query.type).trim() : null;
+    const from = req.query.from ? String(req.query.from).trim() : null;
+    const to = req.query.to ? String(req.query.to).trim() : null;
+
+    if (!Number.isInteger(page) || page < 1) {
+      return res.status(400).json({ message: 'page must be a positive integer' });
+    }
+
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      return res.status(400).json({ message: 'limit must be between 1 and 100' });
+    }
+
+    if (categoryId !== null && (!Number.isInteger(categoryId) || categoryId < 1)) {
+      return res.status(400).json({ message: 'category_id must be a positive integer' });
+    }
+
+    if (type !== null && !['income', 'expense'].includes(type)) {
+      return res.status(400).json({ message: 'type must be income or expense' });
+    }
+
+    if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+      return res.status(400).json({ message: 'from and to must use YYYY-MM-DD format' });
+    }
+
+    const where = { userId: req.user.userId };
+    if (categoryId !== null) where.categoryId = categoryId;
+    if (type !== null) where.type = type;
+    if (from || to) {
+      where.transactionDate = {};
+      if (from) where.transactionDate[Op.gte] = from;
+      if (to) where.transactionDate[Op.lte] = to;
+    }
+
+    const result = await Transaction.findAndCountAll({
+      where,
       include: [
         {
           model: Category,
           attributes: ['id', 'name', 'type']
         }
       ],
-      order: [['transactionDate', 'DESC']]
+      order: [['transactionDate', 'DESC'], ['id', 'DESC']],
+      limit,
+      offset: (page - 1) * limit
     });
 
-    return res.status(200).json(transactions);
+    return res.status(200).json({
+      items: result.rows,
+      pagination: {
+        page,
+        limit,
+        total: result.count,
+        total_pages: Math.ceil(result.count / limit)
+      }
+    });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to fetch transactions', error: error.message });
   }
@@ -518,6 +640,79 @@ app.post('/api/transactions', authMiddleware, async (req, res) => {
     return res.status(201).json(transaction);
   } catch (error) {
     return res.status(500).json({ message: 'Failed to create transaction', error: error.message });
+  }
+});
+
+app.put('/api/transactions/:id', authMiddleware, async (req, res) => {
+  try {
+    const transaction = await Transaction.findOne({
+      where: {
+        id: Number(req.params.id),
+        userId: req.user.userId
+      }
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
+
+    const categoryId = Number(req.body.category_id ?? transaction.categoryId);
+    const amount = Number(req.body.amount ?? transaction.amount);
+    const type = String(req.body.type ?? transaction.type).trim();
+    const description = req.body.description === undefined
+      ? transaction.description
+      : String(req.body.description).trim() || null;
+    const transactionDate = String(req.body.transaction_date ?? transaction.transactionDate).trim();
+
+    if (!categoryId || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Amount must be a positive number' });
+    }
+
+    if (!['income', 'expense'].includes(type)) {
+      return res.status(400).json({ message: 'Type must be income or expense' });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
+      return res.status(400).json({ message: 'transaction_date must use YYYY-MM-DD format' });
+    }
+
+    const category = await Category.findOne({
+      where: {
+        id: categoryId,
+        [Op.or]: [{ userId: req.user.userId }, { userId: null }]
+      }
+    });
+
+    if (!category) {
+      return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
+    }
+
+    await transaction.update({ categoryId, amount, type, description, transactionDate });
+    const response = transaction.toJSON();
+    response.amount = Number(transaction.amount).toFixed(2);
+
+    return res.status(200).json(response);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to update transaction', error: error.message });
+  }
+});
+
+app.delete('/api/transactions/:id', authMiddleware, async (req, res) => {
+  try {
+    const deletedCount = await Transaction.destroy({
+      where: {
+        id: Number(req.params.id),
+        userId: req.user.userId
+      }
+    });
+
+    if (!deletedCount) {
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to delete transaction', error: error.message });
   }
 });
 
