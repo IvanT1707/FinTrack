@@ -11,6 +11,7 @@ const Category = require('./models/Category');
 const Transaction = require('./models/Transaction');
 const BudgetLimit = require('./models/BudgetLimit');
 const { calculateBudgetStatus } = require('./utils/budget');
+const { calculateForecast } = require('./utils/forecast');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -517,6 +518,69 @@ app.post('/api/transactions', authMiddleware, async (req, res) => {
     return res.status(201).json(transaction);
   } catch (error) {
     return res.status(500).json({ message: 'Failed to create transaction', error: error.message });
+  }
+});
+
+app.get('/api/forecast', authMiddleware, async (req, res) => {
+  try {
+    const month = Number(req.query.month);
+    const year = Number(req.query.year);
+    const months = Number(req.query.months || 3);
+
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return res.status(400).json({ message: 'month must be between 1 and 12' });
+    }
+
+    if (!Number.isInteger(year)) {
+      return res.status(400).json({ message: 'year is required' });
+    }
+
+    if (!Number.isInteger(months) || months < 1 || months > 24) {
+      return res.status(400).json({ message: 'months must be between 1 and 24' });
+    }
+
+    const targetStart = new Date(Date.UTC(year, month - 1, 1));
+    const historyStart = new Date(Date.UTC(year, month - 1 - months, 1));
+    const toDateOnly = (date) => date.toISOString().slice(0, 10);
+
+    const transactions = await Transaction.findAll({
+      where: {
+        userId: req.user.userId,
+        transactionDate: {
+          [Op.gte]: toDateOnly(historyStart),
+          [Op.lt]: toDateOnly(targetStart)
+        }
+      },
+      attributes: ['amount', 'type', 'transactionDate']
+    });
+
+    const monthlyTotals = Array.from({ length: months }, (_, index) => {
+      const date = new Date(Date.UTC(year, month - 1 - months + index, 1));
+
+      return {
+        month: date.toISOString().slice(0, 7),
+        income: 0,
+        expense: 0
+      };
+    });
+
+    const totalsByMonth = new Map(monthlyTotals.map((item) => [item.month, item]));
+
+    transactions.forEach((transaction) => {
+      const monthTotals = totalsByMonth.get(String(transaction.transactionDate).slice(0, 7));
+
+      if (monthTotals) {
+        monthTotals[transaction.type] += Number(transaction.amount);
+      }
+    });
+
+    return res.status(200).json({
+      target_month: `${year}-${String(month).padStart(2, '0')}`,
+      history_months: monthlyTotals,
+      ...calculateForecast(monthlyTotals)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to calculate forecast', error: error.message });
   }
 });
 
