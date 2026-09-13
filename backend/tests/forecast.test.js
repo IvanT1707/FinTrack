@@ -35,6 +35,10 @@ test('forecastCategory handles empty and one-month history', () => {
   expect(forecastCategory([1250])).toBe(1250);
 });
 
+test('forecastCategory keeps the newest-month weight when only two months exist', () => {
+  expect(forecastCategory([100, 200])).toBe(160);
+});
+
 test('calculates expense forecasts for each category', async () => {
   const email = `forecast-${Date.now()}@example.com`;
 
