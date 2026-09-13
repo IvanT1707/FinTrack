@@ -1,27 +1,24 @@
-function calculateForecast(monthlyTotals) {
-  if (!Array.isArray(monthlyTotals) || monthlyTotals.length === 0) {
-    return {
-      monthsAnalyzed: 0,
-      averageIncome: 0,
-      averageExpense: 0,
-      projectedBalance: 0
-    };
+function forecastCategory(monthlyHistory) {
+  if (!Array.isArray(monthlyHistory) || monthlyHistory.length === 0) {
+    return 0;
   }
 
-  const totalIncome = monthlyTotals.reduce((sum, month) => sum + Number(month.income || 0), 0);
-  const totalExpense = monthlyTotals.reduce((sum, month) => sum + Number(month.expense || 0), 0);
-  const monthsAnalyzed = monthlyTotals.length;
-  const averageIncome = totalIncome / monthsAnalyzed;
-  const averageExpense = totalExpense / monthsAnalyzed;
+  if (monthlyHistory.length === 1) {
+    return Number(monthlyHistory[0]) || 0;
+  }
 
-  return {
-    monthsAnalyzed,
-    averageIncome,
-    averageExpense,
-    projectedBalance: averageIncome - averageExpense
-  };
+  const weights = [1, 2, 3];
+  const history = monthlyHistory.slice(-weights.length);
+  const usedWeights = weights.slice(-history.length);
+  const weightedSum = history.reduce(
+    (sum, value, index) => sum + (Number(value) || 0) * usedWeights[index],
+    0
+  );
+  const weightSum = usedWeights.reduce((sum, weight) => sum + weight, 0);
+
+  return weightedSum / weightSum;
 }
 
 module.exports = {
-  calculateForecast
+  forecastCategory
 };

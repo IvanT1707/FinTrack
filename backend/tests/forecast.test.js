@@ -5,6 +5,7 @@ const User = require('../src/models/User');
 const RefreshToken = require('../src/models/RefreshToken');
 const Category = require('../src/models/Category');
 const Transaction = require('../src/models/Transaction');
+const { forecastCategory } = require('../src/utils/forecast');
 
 beforeAll(async () => {
   await sequelize.sync({ force: false });
@@ -25,7 +26,16 @@ afterAll(async () => {
   await sequelize.close();
 });
 
-test('calculates a forecast from the selected number of previous months', async () => {
+test('forecastCategory calculates a weighted moving average', () => {
+  expect(forecastCategory([2800, 3100, 3400])).toBe(3200);
+});
+
+test('forecastCategory handles empty and one-month history', () => {
+  expect(forecastCategory([])).toBe(0);
+  expect(forecastCategory([1250])).toBe(1250);
+});
+
+test('calculates expense forecasts for each category', async () => {
   const email = `forecast-${Date.now()}@example.com`;
 
   await request(app)
@@ -40,28 +50,52 @@ test('calculates a forecast from the selected number of previous months', async 
   const categoryResponse = await request(app)
     .post('/api/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ name: 'Зарплата', type: 'income' });
+    .send({ name: 'Продукти', type: 'expense' });
   const categoryId = categoryResponse.body.id;
 
-  await request(app)
-    .post('/api/transactions')
+  const secondCategoryResponse = await request(app)
+    .post('/api/categories')
     .set('Authorization', `Bearer ${token}`)
-    .send({ category_id: categoryId, amount: 3000, type: 'income', transaction_date: '2026-07-10' });
+    .send({ name: 'Транспорт', type: 'expense' });
+  const secondCategoryId = secondCategoryResponse.body.id;
 
   await request(app)
     .post('/api/transactions')
     .set('Authorization', `Bearer ${token}`)
-    .send({ category_id: categoryId, amount: 1000, type: 'income', transaction_date: '2026-08-10' });
+    .send({ category_id: categoryId, amount: 2800, type: 'expense', transaction_date: '2026-07-10' });
+
+  await request(app)
+    .post('/api/transactions')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ category_id: categoryId, amount: 3100, type: 'expense', transaction_date: '2026-08-10' });
+
+  await request(app)
+    .post('/api/transactions')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ category_id: categoryId, amount: 3400, type: 'expense', transaction_date: '2026-09-10' });
+
+  for (const transactionDate of ['2026-07-10', '2026-08-10', '2026-09-10']) {
+    await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: secondCategoryId,
+        amount: 1000,
+        type: 'expense',
+        transaction_date: transactionDate
+      });
+  }
 
   const forecastResponse = await request(app)
-    .get('/api/forecast?month=9&year=2026&months=2')
+    .get('/api/forecast?month=10&year=2026')
     .set('Authorization', `Bearer ${token}`);
 
   expect(forecastResponse.status).toBe(200);
-  expect(forecastResponse.body.target_month).toBe('2026-09');
-  expect(forecastResponse.body.monthsAnalyzed).toBe(2);
-  expect(forecastResponse.body.averageIncome).toBe(2000);
-  expect(forecastResponse.body.averageExpense).toBe(0);
-  expect(forecastResponse.body.projectedBalance).toBe(2000);
-  expect(forecastResponse.body.history_months).toHaveLength(2);
+  expect(forecastResponse.body.month).toBe(10);
+  expect(forecastResponse.body.year).toBe(2026);
+  expect(forecastResponse.body.categories).toEqual([
+    { category_id: categoryId, category: 'Продукти', forecast: 3200 },
+    { category_id: secondCategoryId, category: 'Транспорт', forecast: 1000 }
+  ]);
+  expect(forecastResponse.body.total_forecast).toBe(4200);
 });
