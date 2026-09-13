@@ -25,8 +25,7 @@ afterAll(async () => {
   await sequelize.close();
 });
 
-describe('Transactions API', () => {
-  test('creates a transaction for an authenticated user', async () => {
+async function createTransactionFixture() {
     const email = `transactions-${Date.now()}@example.com`;
 
     const registerResponse = await request(app)
@@ -70,47 +69,116 @@ describe('Transactions API', () => {
       });
 
     expect(transactionResponse.status).toBe(201);
-    expect(transactionResponse.body.amount).toBe('450.50');
-    expect(transactionResponse.body.type).toBe('expense');
+
+    return {
+      token,
+      categoryId: categoryResponse.body.id,
+      transactionId: transactionResponse.body.id
+    };
+}
+
+async function createSecondTransaction(token, categoryId) {
+  const response = await request(app)
+    .post('/api/transactions')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      category_id: categoryId,
+      amount: 100,
+      type: 'expense',
+      transaction_date: '2026-09-01'
+    });
+
+  expect(response.status).toBe(201);
+  return response.body.id;
+}
+
+describe('Transactions API', () => {
+  test('creates a transaction for an authenticated user', async () => {
+    const { token, categoryId } = await createTransactionFixture();
+
+    const response = await request(app)
+      .get(`/api/transactions?category_id=${categoryId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.items[0].amount).toBe('450.50');
+    expect(response.body.items[0].type).toBe('expense');
+  });
+
+  test('updates an owned transaction', async () => {
+    const { token, transactionId } = await createTransactionFixture();
 
     const updateResponse = await request(app)
-      .put(`/api/transactions/${transactionResponse.body.id}`)
+      .put(`/api/transactions/${transactionId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ amount: 500, description: 'Оновлені продукти' });
 
     expect(updateResponse.status).toBe(200);
     expect(updateResponse.body.amount).toBe('500.00');
     expect(updateResponse.body.description).toBe('Оновлені продукти');
+  });
 
-    const secondTransactionResponse = await request(app)
-      .post('/api/transactions')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        category_id: categoryResponse.body.id,
-        amount: 100,
-        type: 'expense',
-        transaction_date: '2026-09-01'
-      });
+  test('deletes an owned transaction', async () => {
+    const { token, transactionId } = await createTransactionFixture();
 
-    expect(secondTransactionResponse.status).toBe(201);
-
-    const listResponse = await request(app)
-      .get('/api/transactions?from=2026-09-01&to=2026-09-30&category_id=' + categoryResponse.body.id + '&type=expense&page=1&limit=1')
+    const deleteResponse = await request(app)
+      .delete(`/api/transactions/${transactionId}`)
       .set('Authorization', `Bearer ${token}`);
 
-    expect(listResponse.status).toBe(200);
-    expect(listResponse.body.items).toHaveLength(1);
-    expect(listResponse.body.pagination).toEqual({
+    expect(deleteResponse.status).toBe(204);
+  });
+
+  test('filters transactions by date', async () => {
+    const { token, categoryId } = await createTransactionFixture();
+    await createSecondTransaction(token, categoryId);
+
+    const response = await request(app)
+      .get('/api/transactions?from=2026-09-12&to=2026-09-12')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(1);
+  });
+
+  test('filters transactions by category', async () => {
+    const { token, categoryId } = await createTransactionFixture();
+    await createSecondTransaction(token, categoryId);
+
+    const response = await request(app)
+      .get(`/api/transactions?category_id=${categoryId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(2);
+    expect(response.body.items.every((item) => item.categoryId === categoryId)).toBe(true);
+  });
+
+  test('filters transactions by type', async () => {
+    const { token } = await createTransactionFixture();
+
+    const response = await request(app)
+      .get('/api/transactions?type=income')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(0);
+  });
+
+  test('paginates transactions', async () => {
+    const { token, categoryId } = await createTransactionFixture();
+    await createSecondTransaction(token, categoryId);
+
+    const response = await request(app)
+      .get('/api/transactions?page=1&limit=1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(1);
+    expect(response.body.pagination).toEqual({
       page: 1,
       limit: 1,
       total: 2,
       total_pages: 2
     });
-
-    const deleteResponse = await request(app)
-      .delete(`/api/transactions/${transactionResponse.body.id}`)
-      .set('Authorization', `Bearer ${token}`);
-
-    expect(deleteResponse.status).toBe(204);
   });
 });
