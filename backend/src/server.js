@@ -9,6 +9,8 @@ const User = require('./models/User');
 const RefreshToken = require('./models/RefreshToken');
 const Category = require('./models/Category');
 const Transaction = require('./models/Transaction');
+const BudgetLimit = require('./models/BudgetLimit');
+const { calculateBudgetStatus } = require('./utils/budget');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -46,6 +48,23 @@ Transaction.belongsTo(User, {
 });
 
 Transaction.belongsTo(Category, {
+  foreignKey: 'category_id'
+});
+
+User.hasMany(BudgetLimit, {
+  foreignKey: 'user_id',
+  onDelete: 'CASCADE'
+});
+
+Category.hasMany(BudgetLimit, {
+  foreignKey: 'category_id'
+});
+
+BudgetLimit.belongsTo(User, {
+  foreignKey: 'user_id'
+});
+
+BudgetLimit.belongsTo(Category, {
   foreignKey: 'category_id'
 });
 
@@ -273,6 +292,110 @@ app.get('/api/transactions', authMiddleware, async (req, res) => {
     return res.status(200).json(transactions);
   } catch (error) {
     return res.status(500).json({ message: 'Failed to fetch transactions', error: error.message });
+  }
+});
+
+app.get('/api/budget-limits', authMiddleware, async (req, res) => {
+  try {
+    const month = Number(req.query.month);
+    const year = Number(req.query.year);
+
+    const limits = await BudgetLimit.findAll({
+      where: {
+        userId: req.user.userId,
+        periodMonth: month,
+        periodYear: year
+      },
+      include: [{ model: Category, attributes: ['id', 'name', 'type'] }],
+      order: [['createdAt', 'DESC']]
+    });
+
+    const startDate = new Date(year, month - 1, 1);
+    const nextMonthDate = month === 12 ? new Date(year + 1, 0, 1) : new Date(year, month, 1);
+
+    const result = await Promise.all(
+      limits.map(async (limit) => {
+        const spent = await Transaction.sum('amount', {
+          where: {
+            userId: req.user.userId,
+            categoryId: limit.categoryId,
+            type: 'expense',
+            transactionDate: {
+              [Op.gte]: startDate.toISOString().slice(0, 10),
+              [Op.lt]: nextMonthDate.toISOString().slice(0, 10)
+            }
+          }
+        });
+
+        const safeSpent = Number(spent || 0);
+        const summary = calculateBudgetStatus(Number(limit.limitAmount), safeSpent);
+
+        return {
+          id: limit.id,
+          category: limit.Category ? limit.Category.name : null,
+          category_id: limit.categoryId,
+          limit_amount: Number(limit.limitAmount).toFixed(2),
+          spent: safeSpent,
+          percent: summary ? summary.percent : 0,
+          status: summary ? summary.status : 'ok'
+        };
+      })
+    );
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch budget limits', error: error.message });
+  }
+});
+
+app.post('/api/budget-limits', authMiddleware, async (req, res) => {
+  try {
+    const categoryId = Number(req.body.category_id);
+    const limitAmount = Number(req.body.limit_amount);
+    const periodMonth = Number(req.body.period_month);
+    const periodYear = Number(req.body.period_year);
+
+    if (!categoryId || !Number.isFinite(limitAmount) || limitAmount <= 0) {
+      return res.status(400).json({ message: 'limit_amount must be a positive number' });
+    }
+
+    if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+      return res.status(400).json({ message: 'period_month must be between 1 and 12' });
+    }
+
+    if (!Number.isInteger(periodYear)) {
+      return res.status(400).json({ message: 'period_year is required' });
+    }
+
+    const category = await Category.findOne({
+      where: {
+        id: categoryId,
+        [Op.or]: [{ userId: req.user.userId }, { userId: null }]
+      }
+    });
+
+    if (!category) {
+      return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
+    }
+
+    const limit = await BudgetLimit.create({
+      userId: req.user.userId,
+      categoryId,
+      limitAmount,
+      periodMonth,
+      periodYear
+    });
+
+    return res.status(201).json({
+      id: limit.id,
+      user_id: limit.userId,
+      category_id: limit.categoryId,
+      limit_amount: Number(limit.limitAmount).toFixed(2),
+      period_month: limit.periodMonth,
+      period_year: limit.periodYear
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to create budget limit', error: error.message });
   }
 });
 
