@@ -28,8 +28,7 @@ afterAll(async () => {
   await sequelize.close();
 });
 
-describe('Budget limits API', () => {
-  test('creates a budget limit and computes current status from actual transactions', async () => {
+async function createBudgetFixture() {
     const email = `budget-${Date.now()}@example.com`;
 
     const registerResponse = await request(app)
@@ -61,11 +60,21 @@ describe('Budget limits API', () => {
 
     expect(categoryResponse.status).toBe(201);
 
+    return {
+      token,
+      categoryId: categoryResponse.body.id
+    };
+}
+
+describe('Budget limits API', () => {
+  test('creates a budget limit and computes current status from actual transactions', async () => {
+    const { token, categoryId } = await createBudgetFixture();
+
     await request(app)
       .post('/api/transactions')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        category_id: categoryResponse.body.id,
+        category_id: categoryId,
         amount: 2500,
         type: 'expense',
         description: 'Магазин',
@@ -76,7 +85,7 @@ describe('Budget limits API', () => {
       .post('/api/budget-limits')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        category_id: categoryResponse.body.id,
+        category_id: categoryId,
         limit_amount: 3000,
         period_month: 9,
         period_year: 2026
@@ -92,17 +101,45 @@ describe('Budget limits API', () => {
     expect(listResponse.status).toBe(200);
     expect(listResponse.body[0]).toHaveProperty('status');
     expect(listResponse.body[0].spent).toBeGreaterThanOrEqual(0);
+  });
+
+  test('updates an existing budget limit', async () => {
+    const { token, categoryId } = await createBudgetFixture();
+
+    const createResponse = await request(app)
+      .post('/api/budget-limits')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: categoryId,
+        limit_amount: 3000,
+        period_month: 9,
+        period_year: 2026
+      });
 
     const updateResponse = await request(app)
-      .put(`/api/budget-limits/${budgetLimitResponse.body.id}`)
+      .put(`/api/budget-limits/${createResponse.body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ limit_amount: 3500 });
 
     expect(updateResponse.status).toBe(200);
     expect(updateResponse.body.limit_amount).toBe('3500.00');
+  });
+
+  test('deletes an existing budget limit', async () => {
+    const { token, categoryId } = await createBudgetFixture();
+
+    const createResponse = await request(app)
+      .post('/api/budget-limits')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: categoryId,
+        limit_amount: 3000,
+        period_month: 9,
+        period_year: 2026
+      });
 
     const deleteResponse = await request(app)
-      .delete(`/api/budget-limits/${budgetLimitResponse.body.id}`)
+      .delete(`/api/budget-limits/${createResponse.body.id}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(deleteResponse.status).toBe(204);
