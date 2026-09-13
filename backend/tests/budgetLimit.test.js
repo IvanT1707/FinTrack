@@ -92,5 +92,26 @@ describe('Budget limits API', () => {
     expect(listResponse.status).toBe(200);
     expect(listResponse.body[0]).toHaveProperty('status');
     expect(listResponse.body[0].spent).toBeGreaterThanOrEqual(0);
+
+    const updateResponse = await request(app)
+      .put(`/api/budget-limits/${budgetLimitResponse.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ limit_amount: 3500 });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.limit_amount).toBe('3500.00');
+
+    const deleteResponse = await request(app)
+      .delete(`/api/budget-limits/${budgetLimitResponse.body.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(deleteResponse.status).toBe(204);
+
+    const emptyListResponse = await request(app)
+      .get('/api/budget-limits?month=9&year=2026')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(emptyListResponse.status).toBe(200);
+    expect(emptyListResponse.body).toHaveLength(0);
   });
 });

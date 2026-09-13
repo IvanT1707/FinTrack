@@ -399,6 +399,81 @@ app.post('/api/budget-limits', authMiddleware, async (req, res) => {
   }
 });
 
+app.put('/api/budget-limits/:id', authMiddleware, async (req, res) => {
+  try {
+    const limit = await BudgetLimit.findOne({
+      where: {
+        id: Number(req.params.id),
+        userId: req.user.userId
+      }
+    });
+
+    if (!limit) {
+      return res.status(404).json({ message: 'Budget limit not found' });
+    }
+
+    const categoryId = Number(req.body.category_id ?? limit.categoryId);
+    const limitAmount = Number(req.body.limit_amount ?? limit.limitAmount);
+    const periodMonth = Number(req.body.period_month ?? limit.periodMonth);
+    const periodYear = Number(req.body.period_year ?? limit.periodYear);
+
+    if (!categoryId || !Number.isFinite(limitAmount) || limitAmount <= 0) {
+      return res.status(400).json({ message: 'limit_amount must be a positive number' });
+    }
+
+    if (!Number.isInteger(periodMonth) || periodMonth < 1 || periodMonth > 12) {
+      return res.status(400).json({ message: 'period_month must be between 1 and 12' });
+    }
+
+    if (!Number.isInteger(periodYear)) {
+      return res.status(400).json({ message: 'period_year is required' });
+    }
+
+    const category = await Category.findOne({
+      where: {
+        id: categoryId,
+        [Op.or]: [{ userId: req.user.userId }, { userId: null }]
+      }
+    });
+
+    if (!category) {
+      return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
+    }
+
+    await limit.update({ categoryId, limitAmount, periodMonth, periodYear });
+
+    return res.status(200).json({
+      id: limit.id,
+      user_id: limit.userId,
+      category_id: limit.categoryId,
+      limit_amount: Number(limit.limitAmount).toFixed(2),
+      period_month: limit.periodMonth,
+      period_year: limit.periodYear
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to update budget limit', error: error.message });
+  }
+});
+
+app.delete('/api/budget-limits/:id', authMiddleware, async (req, res) => {
+  try {
+    const deletedCount = await BudgetLimit.destroy({
+      where: {
+        id: Number(req.params.id),
+        userId: req.user.userId
+      }
+    });
+
+    if (!deletedCount) {
+      return res.status(404).json({ message: 'Budget limit not found' });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to delete budget limit', error: error.message });
+  }
+});
+
 app.post('/api/transactions', authMiddleware, async (req, res) => {
   try {
     const categoryId = Number(req.body.category_id);
