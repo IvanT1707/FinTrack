@@ -1,0 +1,270 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FinTrack API",
+    "version": "1.0.0",
+    "description": "REST API for personal finance tracking, budget limits, analytics, and expense forecasting."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Authentication" },
+    { "name": "Categories" },
+    { "name": "Transactions" },
+    { "name": "Budget limits" },
+    { "name": "Analytics" },
+    { "name": "Forecast" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "CategoryInput": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100, "example": "Groceries" },
+          "type": { "type": "string", "enum": ["income", "expense"], "example": "expense" }
+        }
+      },
+      "TransactionInput": {
+        "type": "object",
+        "required": ["category_id", "amount", "type", "transaction_date"],
+        "properties": {
+          "category_id": { "type": "integer", "example": 1 },
+          "amount": { "type": "number", "format": "double", "exclusiveMinimum": 0, "example": 450.5 },
+          "type": { "type": "string", "enum": ["income", "expense"], "example": "expense" },
+          "description": { "type": "string", "example": "Weekly groceries" },
+          "transaction_date": { "type": "string", "format": "date", "example": "2026-09-05" }
+        }
+      },
+      "BudgetLimitInput": {
+        "type": "object",
+        "required": ["category_id", "limit_amount", "period_month", "period_year"],
+        "properties": {
+          "category_id": { "type": "integer", "example": 1 },
+          "limit_amount": { "type": "number", "format": "double", "exclusiveMinimum": 0, "example": 3000 },
+          "period_month": { "type": "integer", "minimum": 1, "maximum": 12, "example": 9 },
+          "period_year": { "type": "integer", "example": 2026 }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "example": "Validation failed" }
+        }
+      }
+    },
+    "parameters": {
+      "Id": {
+        "in": "path",
+        "name": "id",
+        "required": true,
+        "schema": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request data",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid JWT",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Check API availability",
+        "responses": { "200": { "description": "API is available" } }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register a user",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["email", "password", "full_name"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string", "minLength": 8 }, "full_name": { "type": "string" } } } } } },
+        "responses": { "201": { "description": "User registered" }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "description": "Email already exists" } }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login and receive JWT tokens",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["email", "password"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Login successful" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Refresh an access token",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["refresh_token"], "properties": { "refresh_token": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "New access token returned" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Revoke a refresh token",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["refresh_token"], "properties": { "refresh_token": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Logged out" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "List user and system categories",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Category list" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "post": {
+        "tags": ["Categories"],
+        "summary": "Create a personal category",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryInput" } } } },
+        "responses": { "201": { "description": "Category created" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/categories/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "put": {
+        "tags": ["Categories"],
+        "summary": "Update a personal category",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryInput" } } } },
+        "responses": { "200": { "description": "Category updated" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "delete": {
+        "tags": ["Categories"],
+        "summary": "Delete an unused personal category",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "204": { "description": "Category deleted" }, "409": { "description": "Category is in use" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/transactions": {
+      "get": {
+        "tags": ["Transactions"],
+        "summary": "List transactions with filters and pagination",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "in": "query", "name": "from", "schema": { "type": "string", "format": "date" } },
+          { "in": "query", "name": "to", "schema": { "type": "string", "format": "date" } },
+          { "in": "query", "name": "category_id", "schema": { "type": "integer" } },
+          { "in": "query", "name": "type", "schema": { "type": "string", "enum": ["income", "expense"] } },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": { "200": { "description": "Paginated transactions" } }
+      },
+      "post": {
+        "tags": ["Transactions"],
+        "summary": "Create a transaction",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionInput" } } } },
+        "responses": { "201": { "description": "Transaction created" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/transactions/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "put": {
+        "tags": ["Transactions"],
+        "summary": "Update an owned transaction",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransactionInput" } } } },
+        "responses": { "200": { "description": "Transaction updated" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "delete": {
+        "tags": ["Transactions"],
+        "summary": "Delete an owned transaction",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "204": { "description": "Transaction deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/budget-limits": {
+      "get": {
+        "tags": ["Budget limits"],
+        "summary": "List budget limits with current status",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "query", "name": "month", "required": true, "schema": { "type": "integer", "minimum": 1, "maximum": 12 } }, { "in": "query", "name": "year", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Budget limits and statuses" } }
+      },
+      "post": {
+        "tags": ["Budget limits"],
+        "summary": "Create an expense budget limit",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BudgetLimitInput" } } } },
+        "responses": { "201": { "description": "Budget limit created" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/budget-limits/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "put": {
+        "tags": ["Budget limits"],
+        "summary": "Update a budget limit",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BudgetLimitInput" } } } },
+        "responses": { "200": { "description": "Budget limit updated" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "delete": {
+        "tags": ["Budget limits"],
+        "summary": "Delete a budget limit",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "204": { "description": "Budget limit deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/analytics/summary": {
+      "get": {
+        "tags": ["Analytics"],
+        "summary": "Get income, expenses, and balance for a month",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "query", "name": "month", "required": true, "schema": { "type": "integer" } }, { "in": "query", "name": "year", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Monthly summary" } }
+      }
+    },
+    "/api/analytics/by-category": {
+      "get": {
+        "tags": ["Analytics"],
+        "summary": "Get expense totals by category",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "query", "name": "month", "required": true, "schema": { "type": "integer" } }, { "in": "query", "name": "year", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Category expense breakdown" } }
+      }
+    },
+    "/api/analytics/trend": {
+      "get": {
+        "tags": ["Analytics"],
+        "summary": "Get monthly income and expense trend",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "query", "name": "months", "schema": { "type": "integer", "minimum": 1, "maximum": 24, "default": 6 } }, { "in": "query", "name": "month", "schema": { "type": "integer" } }, { "in": "query", "name": "year", "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Monthly trend" } }
+      }
+    },
+    "/api/forecast": {
+      "get": {
+        "tags": ["Forecast"],
+        "summary": "Forecast next-month expenses by category",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "in": "query", "name": "month", "required": true, "schema": { "type": "integer", "minimum": 1, "maximum": 12 } }, { "in": "query", "name": "year", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Weighted category expense forecast" } }
+      }
+    }
+  }
+}
