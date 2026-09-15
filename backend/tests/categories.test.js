@@ -4,6 +4,7 @@ const sequelize = require('../src/config/database');
 const User = require('../src/models/User');
 const RefreshToken = require('../src/models/RefreshToken');
 const Category = require('../src/models/Category');
+const BudgetLimit = require('../src/models/BudgetLimit');
 
 beforeAll(async () => {
   await sequelize.sync({ force: false });
@@ -11,12 +12,14 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await RefreshToken.destroy({ where: {}, force: true });
+  await BudgetLimit.destroy({ where: {}, force: true });
   await Category.destroy({ where: {}, force: true });
   await User.destroy({ where: {}, force: true });
 });
 
 afterAll(async () => {
   await RefreshToken.destroy({ where: {}, force: true });
+  await BudgetLimit.destroy({ where: {}, force: true });
   await Category.destroy({ where: {}, force: true });
   await User.destroy({ where: {}, force: true });
   await sequelize.close();
@@ -88,5 +91,28 @@ describe('Categories API', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+  });
+
+  test('does not change a budgeted expense category into income', async () => {
+    const { token, categoryId } = await createCategoryFixture();
+
+    const budgetResponse = await request(app)
+      .post('/api/budget-limits')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: categoryId,
+        limit_amount: 3000,
+        period_month: 9,
+        period_year: 2026
+      });
+
+    expect(budgetResponse.status).toBe(201);
+
+    const updateResponse = await request(app)
+      .put(`/api/categories/${categoryId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ type: 'income' });
+
+    expect(updateResponse.status).toBe(409);
   });
 });

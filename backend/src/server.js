@@ -315,6 +315,21 @@ app.put('/api/categories/:id', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Type must be income or expense' });
     }
 
+    if (type === 'income' && category.type === 'expense') {
+      const budgetLimitCount = await BudgetLimit.count({
+        where: {
+          categoryId: category.id,
+          userId: req.user.userId
+        }
+      });
+
+      if (budgetLimitCount > 0) {
+        return res.status(409).json({
+          message: 'Category cannot become income while it has budget limits'
+        });
+      }
+    }
+
     await category.update({ name, type });
     return res.status(200).json(category);
   } catch (error) {
@@ -501,6 +516,10 @@ app.post('/api/budget-limits', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
     }
 
+    if (category.type !== 'expense') {
+      return res.status(400).json({ message: 'Budget limits can only be assigned to expense categories' });
+    }
+
     const limit = await BudgetLimit.create({
       userId: req.user.userId,
       categoryId,
@@ -561,6 +580,10 @@ app.put('/api/budget-limits/:id', authMiddleware, async (req, res) => {
 
     if (!category) {
       return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
+    }
+
+    if (category.type !== 'expense') {
+      return res.status(400).json({ message: 'Budget limits can only be assigned to expense categories' });
     }
 
     await limit.update({ categoryId, limitAmount, periodMonth, periodYear });

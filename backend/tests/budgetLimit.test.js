@@ -125,6 +125,37 @@ describe('Budget limits API', () => {
     expect(updateResponse.body.limit_amount).toBe('3500.00');
   });
 
+  test('rejects a budget limit for an income category', async () => {
+    const email = `income-budget-${Date.now()}@example.com`;
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email, password: 'SecurePass123', full_name: 'Income Budget User' });
+
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'SecurePass123' });
+    const token = loginResponse.body.access_token;
+
+    const categoryResponse = await request(app)
+      .post('/api/categories')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Зарплата', type: 'income' });
+
+    const budgetResponse = await request(app)
+      .post('/api/budget-limits')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: categoryResponse.body.id,
+        limit_amount: 3000,
+        period_month: 9,
+        period_year: 2026
+      });
+
+    expect(budgetResponse.status).toBe(400);
+    expect(budgetResponse.body.message).toMatch(/expense categories/);
+  });
+
   test('deletes an existing budget limit', async () => {
     const { token, categoryId } = await createBudgetFixture();
 
