@@ -2,8 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowUpRight,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   LogOut,
+  Plus,
+  ReceiptText,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -26,7 +30,7 @@ import {
 import api from './services/api'
 import './App.css'
 
-const COLORS = ['#e76f51', '#287271', '#e9c46a', '#264653', '#f4a261', '#6d597a']
+const COLORS = ['#e76f51', '#287271', '#264653', '#6d597a', '#7d8f69', '#d4a373', '#4f6d7a']
 const MONTHS = Array.from({ length: 12 }, (_, index) => new Date(2024, index).toLocaleString('uk-UA', { month: 'long' }))
 
 function formatMoney(value) {
@@ -89,14 +93,14 @@ function LoginScreen({ onLogin }) {
     <main className="auth-shell">
       <section className="auth-art" aria-label="FinTrack finance overview">
         <div className="art-mark"><CircleDollarSign size={20} /></div>
-        <p className="eyebrow">PERSONAL FINANCE, WITH CLARITY</p>
-        <h1>Give every гривня a direction.</h1>
-        <p className="art-copy">One calm place to understand your spending, protect your limits, and see what next month may look like.</p>
+        <p className="eyebrow">ОСОБИСТІ ФІНАНСИ БЕЗ ШУМУ</p>
+        <h1>Надайте кожній гривні напрям.</h1>
+        <p className="art-copy">Спокійний простір, щоб розуміти витрати, тримати ліміти під контролем і бачити наступний місяць.</p>
         <div className="signal-card">
-          <div className="signal-head"><span>MONTHLY SIGNAL</span><ArrowUpRight size={17} /></div>
+          <div className="signal-head"><span>МІСЯЧНИЙ СИГНАЛ</span><ArrowUpRight size={17} /></div>
           <strong>+18.4%</strong>
           <div className="signal-line"><i /><i /><i /><i /><i /><i /><i /></div>
-          <small>Spending visibility is improving</small>
+          <small>Видимість витрат покращується</small>
         </div>
       </section>
 
@@ -104,19 +108,19 @@ function LoginScreen({ onLogin }) {
         <div className="auth-panel-inner">
           <div className="brand-lockup"><span className="brand-dot" /> FinTrack</div>
           <div className="auth-heading">
-            <p className="eyebrow">{mode === 'login' ? 'WELCOME BACK' : 'CREATE YOUR ACCOUNT'}</p>
-            <h2>{mode === 'login' ? 'See the shape of your money.' : 'Start with a clearer view.'}</h2>
-            <p>{mode === 'login' ? 'Sign in to continue to your financial overview.' : 'Create your personal FinTrack workspace.'}</p>
+            <p className="eyebrow">{mode === 'login' ? 'З поверненням' : 'Створення акаунта'}</p>
+            <h2>{mode === 'login' ? 'Побачте форму своїх фінансів.' : 'Почніть із яснішого огляду.'}</h2>
+            <p>{mode === 'login' ? 'Увійдіть, щоб продовжити роботу з фінансовим оглядом.' : 'Створіть особистий простір FinTrack.'}</p>
           </div>
           <form onSubmit={handleSubmit} className="auth-form">
-            {mode === 'register' && <label>Full name<input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" required /></label>}
+            {mode === 'register' && <label>Ім’я та прізвище<input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Ваше ім’я" required /></label>}
             <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
-            <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required /></label>
+            <label>Пароль<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required /></label>
             {error && <div className="form-error" role="alert">{error}</div>}
-            <button className="primary-button" disabled={loading}>{loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'} <ArrowUpRight size={17} /></button>
+            <button className="primary-button" disabled={loading}>{loading ? 'Зачекайте…' : mode === 'login' ? 'Увійти' : 'Створити акаунт'} <ArrowUpRight size={17} /></button>
           </form>
           <button className="auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}>
-            {mode === 'login' ? 'Need an account? Create one' : 'Already have an account? Sign in'}
+            {mode === 'login' ? 'Немає акаунта? Створити' : 'Вже маєте акаунт? Увійти'}
           </button>
           <div className="auth-note"><ShieldCheck size={16} /> Your financial data stays tied to your account.</div>
         </div>
@@ -133,6 +137,9 @@ function Dashboard({ user, onLogout }) {
   const initialPeriod = getCurrentPeriod()
   const [period, setPeriod] = useState(initialPeriod)
   const [dashboard, setDashboard] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [showTransactionForm, setShowTransactionForm] = useState(false)
+  const [transactionForm, setTransactionForm] = useState({ category_id: '', amount: '', type: 'expense', description: '', transaction_date: new Date().toISOString().slice(0, 10) })
   const [error, setError] = useState('')
   const loading = !dashboard && !error
 
@@ -146,14 +153,16 @@ function Dashboard({ user, onLogout }) {
     }
     try {
       const query = `month=${month}&year=${year}`
-      const [summary, byCategory, trend, budgets, forecast] = await Promise.all([
+      const [summary, byCategory, trend, budgets, forecast, availableCategories] = await Promise.all([
         apiRequest(`/analytics/summary?${query}`),
         apiRequest(`/analytics/by-category?${query}`),
         apiRequest(`/analytics/trend?months=6&${query}`),
         apiRequest(`/budget-limits?${query}`),
         apiRequest(`/forecast?${query}`),
+        apiRequest('/categories'),
       ])
       setDashboard({ summary, byCategory, trend, budgets, forecast })
+      setCategories(availableCategories)
     } catch (requestError) {
       setError(requestError.message)
     }
@@ -176,6 +185,23 @@ function Dashboard({ user, onLogout }) {
     setPeriod(nextPeriod)
   }
 
+  async function createTransaction(event) {
+    event.preventDefault()
+    try {
+      await apiRequest('/transactions', { method: 'POST', data: { ...transactionForm, category_id: Number(transactionForm.category_id), amount: Number(transactionForm.amount) } })
+      setShowTransactionForm(false)
+      setTransactionForm({ category_id: '', amount: '', type: 'expense', description: '', transaction_date: new Date().toISOString().slice(0, 10) })
+      await loadDashboard()
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  function movePeriod(offset) {
+    const next = new Date(Number(period.year), period.month - 1 + offset, 1)
+    changePeriod({ month: next.getMonth() + 1, year: next.getFullYear() })
+  }
+
   const summary = dashboard?.summary
   const chartData = dashboard?.byCategory?.categories || []
   const trendData = dashboard?.trend?.months || []
@@ -185,14 +211,14 @@ function Dashboard({ user, onLogout }) {
   return <main className="app-shell">
     <header className="topbar">
       <div className="brand-lockup"><span className="brand-dot" /> FinTrack</div>
-      <nav><a className="nav-active" href="#overview">Overview</a><a href="#spending">Spending</a><a href="#limits">Limits</a></nav>
+      <nav><a className="nav-active" href="#overview">Огляд</a><a href="#spending">Витрати</a><a href="#limits">Ліміти</a></nav>
       <div className="user-menu"><span className="avatar">{user?.full_name?.charAt(0) || 'U'}</span><span className="user-name">{user?.full_name || user?.email}</span><button className="icon-button" title="Sign out" onClick={logout}><LogOut size={17} /></button></div>
     </header>
 
     <div className="content-wrap">
       <section className="page-heading" id="overview">
-        <div><p className="eyebrow">PERSONAL OVERVIEW</p><h1>Good morning, {user?.full_name?.split(' ')[0] || 'there'}.</h1><p className="muted">Here is how your finances are moving this month.</p></div>
-        <div className="period-control"><label htmlFor="period-month">Period</label><select id="period-month" value={period.month} onChange={(event) => changePeriod({ ...period, month: Number(event.target.value) })}>{MONTHS.map((name, index) => <option key={index + 1} value={index + 1}>{name}</option>)}</select><input aria-label="Year" inputMode="numeric" value={period.year} onChange={(event) => changePeriod({ ...period, year: event.target.value })} onBlur={() => { if (!period.year) changePeriod({ ...period, year: getCurrentPeriod().year }) }} /></div>
+        <div><p className="eyebrow">ОСОБИСТИЙ ОГЛЯД</p><h1>Доброго ранку, {user?.full_name?.split(' ')[0] || 'друже'}.</h1><p className="muted">Ось як рухаються ваші фінанси цього місяця.</p></div>
+        <div className="heading-actions"><div className="period-control"><button title="Попередній місяць" onClick={() => movePeriod(-1)}><ChevronLeft size={17} /></button><strong>{MONTHS[period.month - 1]} {period.year}</strong><button title="Наступний місяць" onClick={() => movePeriod(1)}><ChevronRight size={17} /></button></div><button className="primary-button cta-button" onClick={() => setShowTransactionForm(true)}><Plus size={17} /> Нова транзакція</button></div>
       </section>
 
       {error && <div className="alert"><span>{error}</span><button onClick={loadDashboard}><RefreshCw size={16} /> Retry</button></div>}
@@ -200,23 +226,24 @@ function Dashboard({ user, onLogout }) {
 
       {!loading && dashboard && <>
         <section className="metrics-grid">
-          <MetricCard label="AVAILABLE BALANCE" value={formatMoney(summary?.balance)} detail="Income minus spending" tone="metric-green" />
-          <MetricCard label="TOTAL INCOME" value={formatMoney(summary?.total_income)} detail="Money in this period" tone="metric-blue" />
-          <MetricCard label="TOTAL SPENDING" value={formatMoney(summary?.total_expense)} detail="Across all categories" tone="metric-orange" />
-          <MetricCard label="NEXT MONTH FORECAST" value={formatMoney(dashboard.forecast?.total_forecast)} detail="Weighted category forecast" tone="metric-violet" />
+          <MetricCard label="ДОСТУПНИЙ БАЛАНС" value={formatMoney(summary?.balance)} detail="Доходи мінус витрати" tone="metric-green" />
+          <MetricCard label="ЗАГАЛЬНІ ДОХОДИ" value={formatMoney(summary?.total_income)} detail="Надходження за період" tone="metric-blue" />
+          <MetricCard label="ЗАГАЛЬНІ ВИТРАТИ" value={formatMoney(summary?.total_expense)} detail="Усі категорії" tone="metric-orange" />
         </section>
 
         <section className="dashboard-grid">
-          <article className="panel trend-panel"><div className="panel-heading"><div><p className="eyebrow">CASHFLOW</p><h2>Income & spending</h2></div><BarChart3 size={21} /></div><div className="chart-large"><ResponsiveContainer width="100%" height="100%"><LineChart data={trendData}><CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#e6e2d9" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#77756d', fontSize: 11 }} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#77756d', fontSize: 11 }} tickFormatter={(value) => `${value / 1000}k`} /><Tooltip formatter={(value) => formatMoney(value)} /><Line type="monotone" dataKey="income" name="Income" stroke="#287271" strokeWidth={3} dot={{ r: 3 }} /><Line type="monotone" dataKey="expense" name="Spending" stroke="#e76f51" strokeWidth={3} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div><div className="legend"><span><i className="legend-income" /> Income</span><span><i className="legend-expense" /> Spending</span></div></article>
-          <article className="panel category-panel" id="spending"><div className="panel-heading"><div><p className="eyebrow">WHERE IT GOES</p><h2>Spending mix</h2></div><WalletCards size={21} /></div>{chartData.length ? <div className="donut-wrap"><ResponsiveContainer width="52%" height={190}><PieChart><Pie data={chartData} dataKey="total_expense" nameKey="category" innerRadius={55} outerRadius={82} paddingAngle={3}>{chartData.map((entry, index) => <Cell key={entry.category_id} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip formatter={(value) => formatMoney(value)} /></PieChart></ResponsiveContainer><div className="category-list">{chartData.map((item, index) => <div className="category-row" key={item.category_id}><span><i style={{ background: COLORS[index % COLORS.length] }} />{item.category}</span><strong>{formatMoney(item.total_expense)}</strong></div>)}</div></div> : <div className="empty-state">No spending recorded for this period.</div>}</article>
+          <article className="panel trend-panel"><div className="panel-heading"><div><p className="eyebrow">ГРОШОВИЙ ПОТІК</p><h2>Доходи та витрати</h2></div><BarChart3 size={21} /></div><div className="chart-large"><ResponsiveContainer width="100%" height="100%"><LineChart data={trendData}><CartesianGrid strokeDasharray="4 6" vertical={false} stroke="#e6e2d9" /><XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#5f625b', fontSize: 12 }} /><YAxis tickLine={false} axisLine={false} tick={{ fill: '#5f625b', fontSize: 12 }} tickFormatter={(value) => `${value / 1000}к`} /><Tooltip formatter={(value) => formatMoney(value)} /><Line type="monotone" dataKey="income" name="Доходи" stroke="#287271" strokeWidth={3} dot={{ r: 3 }} /><Line type="monotone" dataKey="expense" name="Витрати" stroke="#e76f51" strokeWidth={3} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div><div className="legend"><span><i className="legend-income" /> Доходи</span><span><i className="legend-expense" /> Витрати</span></div></article>
+          <article className="panel category-panel" id="spending"><div className="panel-heading"><div><p className="eyebrow">СТРУКТУРА ВИТРАТ</p><h2>Куди йдуть гроші</h2></div><WalletCards size={21} /></div>{chartData.length ? <div className="donut-wrap"><ResponsiveContainer width="52%" height={190}><PieChart><Pie data={chartData} dataKey="total_expense" nameKey="category" innerRadius={55} outerRadius={82} paddingAngle={3}>{chartData.map((entry, index) => <Cell key={entry.category_id} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip formatter={(value) => formatMoney(value)} /></PieChart></ResponsiveContainer><div className="category-list">{chartData.map((item, index) => <div className="category-row" key={item.category_id}><span><i style={{ background: COLORS[index % COLORS.length] }} />{item.category}</span><strong>{formatMoney(item.total_expense)}</strong></div>)}</div></div> : <div className="empty-state"><ReceiptText size={25} /><span>Витрат за цей період не знайдено.</span><button onClick={() => setShowTransactionForm(true)}>Додати першу транзакцію</button></div>}</article>
         </section>
 
         <section className="dashboard-grid lower-grid">
-          <article className="panel forecast-panel"><div className="panel-heading"><div><p className="eyebrow">LOOKING AHEAD</p><h2>Forecast by category</h2></div><Sparkles size={21} /></div>{forecastData.length ? <div className="chart-bar"><ResponsiveContainer width="100%" height={225}><BarChart data={forecastData} layout="vertical" margin={{ left: 14, right: 18 }}><CartesianGrid strokeDasharray="4 6" horizontal={false} stroke="#e6e2d9" /><XAxis type="number" hide /><YAxis type="category" dataKey="category" width={90} tickLine={false} axisLine={false} tick={{ fill: '#4f514b', fontSize: 12 }} /><Tooltip formatter={(value) => formatMoney(value)} /><Bar dataKey="forecast" fill="#6d597a" radius={[0, 5, 5, 0]} barSize={18} /></BarChart></ResponsiveContainer></div> : <div className="empty-state">Add a few months of expenses to see a forecast.</div>}</article>
-          <article className="panel limits-panel" id="limits"><div className="panel-heading"><div><p className="eyebrow">STAY ON TRACK</p><h2>Budget limits</h2></div><CircleDollarSign size={21} /></div>{budgetData.length ? <div className="limit-list">{budgetData.map((budget) => <div className="limit-row" key={budget.id}><div className="limit-meta"><span>{budget.category}</span><strong>{formatMoney(budget.spent)} <small>/ {formatMoney(budget.limit_amount)}</small></strong></div><div className="progress-track"><i className={`progress-${budget.status}`} style={{ width: `${Math.min(budget.percent, 100)}%` }} /></div><div className="limit-foot"><span>{Math.round(budget.percent)}% used</span><em className={`status-${budget.status}`}>{budget.status}</em></div></div>)}</div> : <div className="empty-state">No limits set for this period.</div>}</article>
+          <article className="panel forecast-panel"><div className="panel-heading"><div><p className="eyebrow">ПРОГНОЗ</p><h2>Витрати за категоріями</h2></div><Sparkles size={21} /></div>{forecastData.length ? <div className="chart-bar" style={{ height: `${Math.max(225, forecastData.length * 36 + 45)}px` }}><ResponsiveContainer width="100%" height="100%"><BarChart data={forecastData} layout="vertical" margin={{ left: 14, right: 18 }}><CartesianGrid strokeDasharray="4 6" horizontal={false} stroke="#e6e2d9" /><XAxis type="number" hide /><YAxis type="category" dataKey="category" width={90} tickLine={false} axisLine={false} tick={{ fill: '#4f514b', fontSize: 12 }} /><Tooltip formatter={(value) => formatMoney(value)} /><Bar dataKey="forecast" fill="#6d597a" radius={[0, 5, 5, 0]} barSize={18} /></BarChart></ResponsiveContainer></div> : <div className="empty-state"><Sparkles size={25} /><span>Додайте кілька місяців витрат для прогнозу.</span></div>}</article>
+          <article className="panel limits-panel" id="limits"><div className="panel-heading"><div><p className="eyebrow">КОНТРОЛЬ</p><h2>Бюджетні ліміти</h2></div><CircleDollarSign size={21} /></div>{budgetData.length ? <div className="limit-list">{budgetData.map((budget) => <div className="limit-row" key={budget.id}><div className="limit-meta"><span>{budget.category}</span><strong>{formatMoney(budget.spent)} <small>/ {formatMoney(budget.limit_amount)}</small></strong></div><div className="progress-track"><i className={`progress-${budget.status}`} style={{ width: `${Math.min(budget.percent, 100)}%` }} /></div><div className="limit-foot"><span>{Math.round(budget.percent)}% використано</span><em className={`status-${budget.status}`}>{budget.status === 'ok' ? 'у нормі' : budget.status === 'warning' ? 'увага' : 'перевищено'}</em></div></div>)}</div> : <div className="empty-state"><CircleDollarSign size={25} /><span>Лімітів на цей період немає.</span><button onClick={() => setShowTransactionForm(true)}>Переглянути бюджет</button></div>}</article>
         </section>
       </>}
     </div>
+    <nav className="mobile-tabs"><a href="#overview">Огляд</a><a href="#spending">Витрати</a><button onClick={() => setShowTransactionForm(true)}><Plus size={20} /></button><a href="#limits">Ліміти</a><button onClick={logout}><LogOut size={17} /></button></nav>
+    {showTransactionForm && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTransactionForm(false) }}><form className="transaction-modal" onSubmit={createTransaction}><div className="modal-heading"><div><p className="eyebrow">ШВИДКА ДІЯ</p><h2>Нова транзакція</h2></div><button type="button" className="icon-button" onClick={() => setShowTransactionForm(false)}>×</button></div><label>Тип<select value={transactionForm.type} onChange={(event) => setTransactionForm({ ...transactionForm, type: event.target.value })}><option value="expense">Витрата</option><option value="income">Дохід</option></select></label><label>Категорія<select value={transactionForm.category_id} onChange={(event) => setTransactionForm({ ...transactionForm, category_id: event.target.value })} required><option value="">Оберіть категорію</option>{categories.filter((category) => category.type === transactionForm.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Сума<input type="number" min="0.01" step="0.01" value={transactionForm.amount} onChange={(event) => setTransactionForm({ ...transactionForm, amount: event.target.value })} required /></label><label>Дата<input type="date" value={transactionForm.transaction_date} onChange={(event) => setTransactionForm({ ...transactionForm, transaction_date: event.target.value })} required /></label><label>Опис<input value={transactionForm.description} onChange={(event) => setTransactionForm({ ...transactionForm, description: event.target.value })} placeholder="Наприклад, покупки в магазині" /></label><button className="primary-button" type="submit">Зберегти транзакцію <ArrowUpRight size={17} /></button></form></div>}
   </main>
 }
 
