@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowUpRight,
   BarChart3,
@@ -23,10 +23,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import api from './services/api'
 import './App.css'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
 const COLORS = ['#e76f51', '#287271', '#e9c46a', '#264653', '#f4a261', '#6d597a']
+const MONTHS = Array.from({ length: 12 }, (_, index) => new Date(2024, index).toLocaleString('uk-UA', { month: 'long' }))
 
 function formatMoney(value) {
   return new Intl.NumberFormat('uk-UA', {
@@ -42,24 +43,19 @@ function getCurrentPeriod() {
 }
 
 async function apiRequest(path, options = {}) {
-  const token = localStorage.getItem('fintrack_access_token')
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  })
-
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.message || 'Не вдалося виконати запит')
-  return data
+  try {
+    const response = await api({ url: path, ...options })
+    return response.data
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Не вдалося виконати запит')
+  }
 }
 
 function LoginScreen({ onLogin }) {
+  const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -69,13 +65,19 @@ function LoginScreen({ onLogin }) {
     setError('')
 
     try {
-      const data = await apiRequest('/auth/login', {
+      const data = await apiRequest(mode === 'login' ? '/auth/login' : '/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        data: mode === 'login' ? { email, password } : { email, password, full_name: fullName },
       })
-      localStorage.setItem('fintrack_access_token', data.access_token)
-      localStorage.setItem('fintrack_user', JSON.stringify(data.user))
-      onLogin(data.user)
+      if (mode === 'register') {
+        setMode('login')
+        setError('Account created. Sign in with your new credentials.')
+      } else {
+        localStorage.setItem('fintrack_access_token', data.access_token)
+        localStorage.setItem('fintrack_refresh_token', data.refresh_token)
+        localStorage.setItem('fintrack_user', JSON.stringify(data.user))
+        onLogin(data.user)
+      }
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -102,16 +104,20 @@ function LoginScreen({ onLogin }) {
         <div className="auth-panel-inner">
           <div className="brand-lockup"><span className="brand-dot" /> FinTrack</div>
           <div className="auth-heading">
-            <p className="eyebrow">WELCOME BACK</p>
-            <h2>See the shape of your money.</h2>
-            <p>Sign in to continue to your financial overview.</p>
+            <p className="eyebrow">{mode === 'login' ? 'WELCOME BACK' : 'CREATE YOUR ACCOUNT'}</p>
+            <h2>{mode === 'login' ? 'See the shape of your money.' : 'Start with a clearer view.'}</h2>
+            <p>{mode === 'login' ? 'Sign in to continue to your financial overview.' : 'Create your personal FinTrack workspace.'}</p>
           </div>
           <form onSubmit={handleSubmit} className="auth-form">
+            {mode === 'register' && <label>Full name<input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" required /></label>}
             <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
             <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required /></label>
             {error && <div className="form-error" role="alert">{error}</div>}
-            <button className="primary-button" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'} <ArrowUpRight size={17} /></button>
+            <button className="primary-button" disabled={loading}>{loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'} <ArrowUpRight size={17} /></button>
           </form>
+          <button className="auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}>
+            {mode === 'login' ? 'Need an account? Create one' : 'Already have an account? Sign in'}
+          </button>
           <div className="auth-note"><ShieldCheck size={16} /> Your financial data stays tied to your account.</div>
         </div>
       </section>
@@ -127,13 +133,17 @@ function Dashboard({ user, onLogout }) {
   const initialPeriod = getCurrentPeriod()
   const [period, setPeriod] = useState(initialPeriod)
   const [dashboard, setDashboard] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const loading = !dashboard && !error
 
-  async function loadDashboard() {
-    setLoading(true)
+  const loadDashboard = useCallback(async () => {
     setError('')
-    const { month, year } = period
+    const { month } = period
+    const year = Number(period.year)
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      setError('Enter a valid year between 2000 and 2100.')
+      return
+    }
     try {
       const query = `month=${month}&year=${year}`
       const [summary, byCategory, trend, budgets, forecast] = await Promise.all([
@@ -146,17 +156,24 @@ function Dashboard({ user, onLogout }) {
       setDashboard({ summary, byCategory, trend, budgets, forecast })
     } catch (requestError) {
       setError(requestError.message)
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [period])
 
-  useEffect(() => { loadDashboard() }, [period])
+  useEffect(() => {
+    loadDashboard()
+  }, [loadDashboard])
 
   function logout() {
     localStorage.removeItem('fintrack_access_token')
+    localStorage.removeItem('fintrack_refresh_token')
     localStorage.removeItem('fintrack_user')
     onLogout()
+  }
+
+  function changePeriod(nextPeriod) {
+    setDashboard(null)
+    setError('')
+    setPeriod(nextPeriod)
   }
 
   const summary = dashboard?.summary
@@ -175,7 +192,7 @@ function Dashboard({ user, onLogout }) {
     <div className="content-wrap">
       <section className="page-heading" id="overview">
         <div><p className="eyebrow">PERSONAL OVERVIEW</p><h1>Good morning, {user?.full_name?.split(' ')[0] || 'there'}.</h1><p className="muted">Here is how your finances are moving this month.</p></div>
-        <div className="period-control"><label htmlFor="period-month">Period</label><select id="period-month" value={period.month} onChange={(event) => setPeriod({ ...period, month: Number(event.target.value) })}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Date(2024, index).toLocaleString('en', { month: 'long' })}</option>)}</select><input aria-label="Year" value={period.year} onChange={(event) => setPeriod({ ...period, year: Number(event.target.value) })} /></div>
+        <div className="period-control"><label htmlFor="period-month">Period</label><select id="period-month" value={period.month} onChange={(event) => changePeriod({ ...period, month: Number(event.target.value) })}>{MONTHS.map((name, index) => <option key={index + 1} value={index + 1}>{name}</option>)}</select><input aria-label="Year" inputMode="numeric" value={period.year} onChange={(event) => changePeriod({ ...period, year: event.target.value })} onBlur={() => { if (!period.year) changePeriod({ ...period, year: getCurrentPeriod().year }) }} /></div>
       </section>
 
       {error && <div className="alert"><span>{error}</span><button onClick={loadDashboard}><RefreshCw size={16} /> Retry</button></div>}
@@ -205,6 +222,11 @@ function Dashboard({ user, onLogout }) {
 
 function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('fintrack_user') || 'null'))
+  useEffect(() => {
+    const handleLogout = () => setUser(null)
+    window.addEventListener('fintrack:logout', handleLogout)
+    return () => window.removeEventListener('fintrack:logout', handleLogout)
+  }, [])
   return user ? <Dashboard user={user} onLogout={() => setUser(null)} /> : <LoginScreen onLogin={setUser} />
 }
 
