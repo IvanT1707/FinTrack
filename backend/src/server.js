@@ -101,6 +101,15 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function isValidDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 function createAccessToken(user) {
   return jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
 }
@@ -217,6 +226,9 @@ app.post('/api/auth/refresh', async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, JWT_SECRET);
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ message: 'Invalid refresh token' });
+    }
     const storedToken = await RefreshToken.findOne({
       where: {
         token: refreshToken,
@@ -655,8 +667,8 @@ app.post('/api/transactions', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Category does not exist or does not belong to this user' });
     }
 
-    if (!transactionDate) {
-      return res.status(400).json({ message: 'transaction_date is required' });
+    if (!transactionDate || !isValidDateOnly(transactionDate)) {
+      return res.status(400).json({ message: 'transaction_date must be a valid YYYY-MM-DD date' });
     }
 
     const transaction = await Transaction.create({
@@ -703,8 +715,8 @@ app.put('/api/transactions/:id', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Type must be income or expense' });
     }
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)) {
-      return res.status(400).json({ message: 'transaction_date must use YYYY-MM-DD format' });
+    if (!isValidDateOnly(transactionDate)) {
+      return res.status(400).json({ message: 'transaction_date must be a valid YYYY-MM-DD date' });
     }
 
     const category = await Category.findOne({

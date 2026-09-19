@@ -181,4 +181,21 @@ describe('Transactions API', () => {
       total_pages: 2
     });
   });
+
+  test('rejects an impossible transaction date', async () => {
+    const { token, categoryId } = await createTransactionFixture();
+
+    const response = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        category_id: categoryId,
+        amount: 100,
+        type: 'expense',
+        transaction_date: '2026-99-99'
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toMatch(/valid YYYY-MM-DD/);
+  });
 });
