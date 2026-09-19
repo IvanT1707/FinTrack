@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import {
   ArrowUpRight,
   BarChart3,
@@ -28,6 +29,9 @@ import {
   YAxis,
 } from 'recharts'
 import api from './services/api'
+import TransactionsPage from './pages/TransactionsPage'
+import CategoriesPage from './pages/CategoriesPage'
+import BudgetPage from './pages/BudgetPage'
 import './App.css'
 
 const COLORS = ['#e76f51', '#287271', '#264653', '#6d597a', '#7d8f69', '#d4a373', '#4f6d7a']
@@ -56,6 +60,7 @@ async function apiRequest(path, options = {}) {
 }
 
 function LoginScreen({ onLogin }) {
+  const navigate = useNavigate()
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -81,6 +86,7 @@ function LoginScreen({ onLogin }) {
         localStorage.setItem('fintrack_refresh_token', data.refresh_token)
         localStorage.setItem('fintrack_user', JSON.stringify(data.user))
         onLogin(data.user)
+        navigate('/dashboard', { replace: true })
       }
     } catch (requestError) {
       setError(requestError.message)
@@ -210,8 +216,8 @@ function Dashboard({ user, onLogout }) {
 
   return <main className="app-shell">
     <header className="topbar">
-      <div className="brand-lockup"><span className="brand-dot" /> FinTrack</div>
-      <nav><a className="nav-active" href="#overview">Огляд</a><a href="#spending">Витрати</a><a href="#limits">Ліміти</a></nav>
+      <Link className="brand-lockup" to="/dashboard"><span className="brand-dot" /> FinTrack</Link>
+      <nav><Link className="nav-active" to="/dashboard">Огляд</Link><Link to="#spending">Витрати</Link><Link to="#limits">Ліміти</Link><Link to="/transactions">Транзакції</Link><Link to="/budget">Бюджет</Link></nav>
       <div className="user-menu"><span className="avatar">{user?.full_name?.charAt(0) || 'U'}</span><span className="user-name">{user?.full_name || user?.email}</span><button className="icon-button" title="Sign out" onClick={logout}><LogOut size={17} /></button></div>
     </header>
 
@@ -254,7 +260,16 @@ function App() {
     window.addEventListener('fintrack:logout', handleLogout)
     return () => window.removeEventListener('fintrack:logout', handleLogout)
   }, [])
-  return user ? <Dashboard user={user} onLogout={() => setUser(null)} /> : <LoginScreen onLogin={setUser} />
+  return <BrowserRouter><Routes>
+    <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginScreen onLogin={setUser} />} />
+    <Route path="*" element={user ? <Routes>
+      <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} />} />
+      <Route path="/transactions" element={<TransactionsPage />} />
+      <Route path="/categories" element={<CategoriesPage />} />
+      <Route path="/budget" element={<BudgetPage />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes> : <Navigate to="/login" replace />} />
+  </Routes></BrowserRouter>
 }
 
 export default App

@@ -54,7 +54,15 @@ const Transaction = sequelize.define(
   },
   {
     tableName: 'transactions',
-    underscored: true
+    underscored: true,
+    indexes: [
+      {
+        fields: ['user_id', 'transaction_date']
+      },
+      {
+        fields: ['category_id']
+      }
+    ]
   }
 );
 

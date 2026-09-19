@@ -1,0 +1,27 @@
+import { useEffect, useState } from 'react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
+import api from '../services/api'
+
+function currentPeriod() { const date = new Date(); return { month: date.getMonth() + 1, year: date.getFullYear() } }
+
+export default function BudgetPage() {
+  const [period, setPeriod] = useState(currentPeriod())
+  const [limits, setLimits] = useState([])
+  const [categories, setCategories] = useState([])
+  const [form, setForm] = useState({ category_id: '', limit_amount: '', period_month: period.month, period_year: period.year })
+  const [editingId, setEditingId] = useState(null)
+  const [error, setError] = useState('')
+
+  async function loadData() {
+    try {
+      const [limitResponse, categoryResponse] = await Promise.all([api.get(`/budget-limits?month=${period.month}&year=${period.year}`), api.get('/categories')])
+      setLimits(limitResponse.data); setCategories(categoryResponse.data.filter((category) => category.type === 'expense'))
+    } catch (requestError) { setError(requestError.response?.data?.message || 'Не вдалося завантажити бюджет') }
+  }
+  useEffect(() => { loadData() }, [period])
+  function resetForm() { setEditingId(null); setForm({ category_id: '', limit_amount: '', period_month: period.month, period_year: period.year }) }
+  function editLimit(limit) { setEditingId(limit.id); setForm({ category_id: limit.category_id, limit_amount: limit.limit_amount, period_month: period.month, period_year: period.year }) }
+  async function saveLimit(event) { event.preventDefault(); try { const payload = { ...form, category_id: Number(form.category_id), limit_amount: Number(form.limit_amount), period_month: period.month, period_year: period.year }; if (editingId) await api.put(`/budget-limits/${editingId}`, payload); else await api.post('/budget-limits', payload); resetForm(); await loadData() } catch (requestError) { setError(requestError.response?.data?.message || 'Не вдалося зберегти ліміт') } }
+  async function deleteLimit(id) { if (!window.confirm('Видалити ліміт?')) return; try { await api.delete(`/budget-limits/${id}`); await loadData() } catch (requestError) { setError(requestError.response?.data?.message || 'Не вдалося видалити ліміт') } }
+  return <main className="app-shell page-shell"><header className="topbar"><a className="brand-lockup" href="/dashboard"><span className="brand-dot" /> FinTrack</a><nav><a href="/dashboard">Огляд</a><a href="/transactions">Транзакції</a><a href="/categories">Категорії</a><a className="nav-active" href="/budget">Бюджет</a></nav></header><div className="content-wrap"><section className="page-heading"><div><p className="eyebrow">ПЛАНУВАННЯ</p><h1>Бюджетні ліміти</h1><p className="muted">Контролюйте витрати за категоріями та місяцями.</p></div><div className="period-control"><button onClick={() => setPeriod((value) => { const date = new Date(value.year, value.month - 2, 1); return { month: date.getMonth() + 1, year: date.getFullYear() } })}>←</button><strong>{new Date(period.year, period.month - 1).toLocaleString('uk-UA', { month: 'long' })} {period.year}</strong><button onClick={() => setPeriod((value) => { const date = new Date(value.year, value.month, 1); return { month: date.getMonth() + 1, year: date.getFullYear() } })}>→</button></div></section>{error && <div className="alert">{error}</div>}<div className="split-layout"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">{editingId ? 'РЕДАГУВАННЯ' : 'НОВИЙ ЛІМІТ'}</p><h2>{editingId ? 'Змінити ліміт' : 'Встановити ліміт'}</h2></div><Plus size={21} /></div><form className="stack-form" onSubmit={saveLimit}><label>Категорія<select value={form.category_id} onChange={(event) => setForm({ ...form, category_id: event.target.value })} required><option value="">Оберіть категорію</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Сума ліміту<input type="number" min="0.01" step="0.01" value={form.limit_amount} onChange={(event) => setForm({ ...form, limit_amount: event.target.value })} required /></label><div className="form-actions"><button className="primary-button" type="submit">{editingId ? 'Зберегти зміни' : 'Встановити ліміт'}</button>{editingId && <button className="secondary-button" type="button" onClick={resetForm}>Скасувати</button>}</div></form></section><section className="panel"><div className="panel-heading"><div><p className="eyebrow">ПОТОЧНИЙ МІСЯЦЬ</p><h2>Використання</h2></div></div><div className="limit-list">{limits.map((limit) => <div className="limit-row" key={limit.id}><div className="limit-meta"><span>{limit.category}</span><strong>{Number(limit.spent).toFixed(2)} <small>/ {limit.limit_amount}</small></strong></div><div className="progress-track"><i className={`progress-${limit.status}`} style={{ width: `${Math.min(limit.percent, 100)}%` }} /></div><div className="limit-foot"><span>{Math.round(limit.percent)}% використано</span><div className="row-actions"><em className={`status-${limit.status}`}>{limit.status === 'ok' ? 'у нормі' : limit.status === 'warning' ? 'увага' : 'перевищено'}</em><button title="Редагувати" onClick={() => editLimit(limit)}><Pencil size={15} /></button><button title="Видалити" onClick={() => deleteLimit(limit.id)}><Trash2 size={15} /></button></div></div></div>)}{!limits.length && <div className="empty-state">Лімітів на цей місяць ще немає.</div>}</div></section></div></div></main>
+}
