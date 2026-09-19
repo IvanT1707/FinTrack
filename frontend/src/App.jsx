@@ -139,6 +139,27 @@ function MetricCard({ label, value, detail, tone }) {
   return <article className={`metric-card ${tone}`}><p>{label}</p><strong>{value}</strong><span>{detail}</span></article>
 }
 
+function InternalNavigation() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    function handleClick(event) {
+      const link = event.target.closest('a')
+      const href = link?.getAttribute('href')
+
+      if (!href || !href.startsWith('/') || href.startsWith('//')) return
+
+      event.preventDefault()
+      navigate(href)
+    }
+
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [navigate])
+
+  return null
+}
+
 function Dashboard({ user, onLogout }) {
   const initialPeriod = getCurrentPeriod()
   const [period, setPeriod] = useState(initialPeriod)
@@ -260,7 +281,7 @@ function App() {
     window.addEventListener('fintrack:logout', handleLogout)
     return () => window.removeEventListener('fintrack:logout', handleLogout)
   }, [])
-  return <BrowserRouter><Routes>
+  return <BrowserRouter><InternalNavigation /><Routes>
     <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginScreen onLogin={setUser} />} />
     <Route path="*" element={user ? <Routes>
       <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} />} />
