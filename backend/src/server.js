@@ -18,6 +18,7 @@ const { createAuthMiddleware } = require('./middleware/authMiddleware');
 const { createAuthRouter } = require('./routes/authRoutes');
 const { createCategoryRouter } = require('./routes/categoryRoutes');
 const { createTransactionRouter } = require('./routes/transactionRoutes');
+const { createBudgetLimitRouter } = require('./routes/budgetLimitRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -73,8 +74,14 @@ app.use('/api/transactions', createTransactionRouter({
   authMiddleware,
   isValidDateOnly
 }));
-
-app.get('/api/budget-limits', authMiddleware, async (req, res) => {
+app.use('/api/budget-limits', createBudgetLimitRouter({
+  BudgetLimit,
+  Category,
+  Transaction,
+  authMiddleware,
+  calculateBudgetStatus
+}));
+/* app.get('/api/budget-limits', authMiddleware, async (req, res) => {
   try {
     const month = Number(req.query.month);
     const year = Number(req.query.year);
@@ -260,6 +267,7 @@ app.delete('/api/budget-limits/:id', authMiddleware, async (req, res) => {
     return res.status(500).json({ message: 'Failed to delete budget limit', error: error.message });
   }
 });
+*/
 
 app.get('/api/analytics/summary', authMiddleware, async (req, res) => {
   try {
