@@ -8,6 +8,8 @@ function createBudgetLimitRouter({ BudgetLimit, Category, Transaction, authMiddl
     try {
       const month = Number(req.query.month);
       const year = Number(req.query.year);
+      if (!Number.isInteger(month) || month < 1 || month > 12) return res.status(400).json({ message: 'month must be between 1 and 12' });
+      if (!Number.isInteger(year)) return res.status(400).json({ message: 'year is required' });
       const limits = await BudgetLimit.findAll({
         where: { userId: req.user.userId, periodMonth: month, periodYear: year },
         include: [{ model: Category, attributes: ['id', 'name', 'type'] }],
@@ -88,6 +90,9 @@ function createBudgetLimitRouter({ BudgetLimit, Category, Transaction, authMiddl
       await limit.update({ categoryId, limitAmount, periodMonth, periodYear });
       return res.status(200).json({ id: limit.id, user_id: limit.userId, category_id: limit.categoryId, limit_amount: Number(limit.limitAmount).toFixed(2), period_month: limit.periodMonth, period_year: limit.periodYear });
     } catch (error) {
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        return res.status(409).json({ message: 'Budget limit for this category and period already exists' });
+      }
       return res.status(500).json({ message: 'Failed to update budget limit', error: error.message });
     }
   });

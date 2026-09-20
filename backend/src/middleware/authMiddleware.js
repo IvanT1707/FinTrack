@@ -11,6 +11,9 @@ function createAuthMiddleware(jwtSecret) {
 
     try {
       req.user = jwt.verify(token, jwtSecret);
+      if (req.user.type === 'refresh') {
+        return res.status(401).json({ message: 'Access token required' });
+      }
       return next();
     } catch (error) {
       return res.status(401).json({ message: 'Invalid or expired token' });
