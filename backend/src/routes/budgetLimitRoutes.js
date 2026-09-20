@@ -61,6 +61,9 @@ function createBudgetLimitRouter({ BudgetLimit, Category, Transaction, authMiddl
       const limit = await BudgetLimit.create({ userId: req.user.userId, categoryId, limitAmount, periodMonth, periodYear });
       return res.status(201).json({ id: limit.id, user_id: limit.userId, category_id: limit.categoryId, limit_amount: Number(limit.limitAmount).toFixed(2), period_month: limit.periodMonth, period_year: limit.periodYear });
     } catch (error) {
+      if (error.name === 'SequelizeUniqueConstraintError') {
+        return res.status(409).json({ message: 'Budget limit for this category and period already exists' });
+      }
       return res.status(500).json({ message: 'Failed to create budget limit', error: error.message });
     }
   });

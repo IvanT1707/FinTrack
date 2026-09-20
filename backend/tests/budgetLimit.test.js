@@ -156,6 +156,30 @@ describe('Budget limits API', () => {
     expect(budgetResponse.body.message).toMatch(/expense categories/);
   });
 
+  test('rejects a duplicate budget limit for the same category and period', async () => {
+    const { token, categoryId } = await createBudgetFixture();
+    const payload = {
+      category_id: categoryId,
+      limit_amount: 3000,
+      period_month: 9,
+      period_year: 2026
+    };
+
+    const firstResponse = await request(app)
+      .post('/api/budget-limits')
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload);
+    expect(firstResponse.status).toBe(201);
+
+    const duplicateResponse = await request(app)
+      .post('/api/budget-limits')
+      .set('Authorization', `Bearer ${token}`)
+      .send(payload);
+
+    expect(duplicateResponse.status).toBe(409);
+    expect(duplicateResponse.body.message).toMatch(/already exists/);
+  });
+
   test('deletes an existing budget limit', async () => {
     const { token, categoryId } = await createBudgetFixture();
 
