@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import {
   ArrowUpRight,
@@ -29,10 +29,11 @@ import {
   YAxis,
 } from 'recharts'
 import api from './services/api'
-import TransactionsPage from './pages/TransactionsPage'
-import CategoriesPage from './pages/CategoriesPage'
-import BudgetPage from './pages/BudgetPage'
 import './App.css'
+
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage'))
+const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
+const BudgetPage = lazy(() => import('./pages/BudgetPage'))
 
 const COLORS = ['#e76f51', '#287271', '#264653', '#6d597a', '#7d8f69', '#d4a373', '#4f6d7a']
 const MONTHS = Array.from({ length: 12 }, (_, index) => new Date(2024, index).toLocaleString('uk-UA', { month: 'long' }))
@@ -281,7 +282,7 @@ function App() {
     window.addEventListener('fintrack:logout', handleLogout)
     return () => window.removeEventListener('fintrack:logout', handleLogout)
   }, [])
-  return <BrowserRouter><InternalNavigation /><Routes>
+  return <BrowserRouter><InternalNavigation /><Suspense fallback={<div className="loading-state">Завантаження сторінки…</div>}><Routes>
     <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginScreen onLogin={setUser} />} />
     <Route path="*" element={user ? <Routes>
       <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} />} />
@@ -290,7 +291,7 @@ function App() {
       <Route path="/budget" element={<BudgetPage />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes> : <Navigate to="/login" replace />} />
-  </Routes></BrowserRouter>
+  </Routes></Suspense></BrowserRouter>
 }
 
 export default App
