@@ -19,6 +19,7 @@ const { createAuthRouter } = require('./routes/authRoutes');
 const { createCategoryRouter } = require('./routes/categoryRoutes');
 const { createTransactionRouter } = require('./routes/transactionRoutes');
 const { createBudgetLimitRouter } = require('./routes/budgetLimitRoutes');
+const { createForecastRouter } = require('./routes/forecastRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -80,6 +81,12 @@ app.use('/api/budget-limits', createBudgetLimitRouter({
   Transaction,
   authMiddleware,
   calculateBudgetStatus
+}));
+app.use('/api/forecast', createForecastRouter({
+  Category,
+  Transaction,
+  authMiddleware,
+  forecastCategory
 }));
 /* app.get('/api/budget-limits', authMiddleware, async (req, res) => {
   try {
@@ -425,7 +432,7 @@ app.get('/api/analytics/trend', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/forecast', authMiddleware, async (req, res) => {
+/* app.get('/api/forecast', authMiddleware, async (req, res) => {
   try {
     const month = Number(req.query.month);
     const year = Number(req.query.year);
@@ -504,7 +511,7 @@ app.get('/api/forecast', authMiddleware, async (req, res) => {
   } catch (error) {
     return res.status(500).json({ message: 'Failed to calculate forecast', error: error.message });
   }
-});
+}); */
 
 async function startServer() {
   try {
