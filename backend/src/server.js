@@ -11,6 +11,7 @@ const RefreshToken = require('./models/RefreshToken');
 const Category = require('./models/Category');
 const Transaction = require('./models/Transaction');
 const BudgetLimit = require('./models/BudgetLimit');
+const setupAssociations = require('./models/associations');
 const { calculateBudgetStatus } = require('./utils/budget');
 const { forecastCategory } = require('./utils/forecast');
 const { createAuthMiddleware } = require('./middleware/authMiddleware');
@@ -28,57 +29,7 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173,http:
   .split(',')
   .map((origin) => origin.trim());
 
-User.hasMany(RefreshToken, {
-  foreignKey: 'user_id',
-  onDelete: 'CASCADE'
-});
-
-RefreshToken.belongsTo(User, {
-  foreignKey: 'user_id'
-});
-
-User.hasMany(Category, {
-  foreignKey: 'user_id',
-  onDelete: 'CASCADE'
-});
-
-Category.belongsTo(User, {
-  foreignKey: 'user_id'
-});
-
-User.hasMany(Transaction, {
-  foreignKey: 'user_id',
-  onDelete: 'CASCADE'
-});
-
-Category.hasMany(Transaction, {
-  foreignKey: 'category_id'
-});
-
-Transaction.belongsTo(User, {
-  foreignKey: 'user_id'
-});
-
-Transaction.belongsTo(Category, {
-  foreignKey: 'category_id'
-});
-
-User.hasMany(BudgetLimit, {
-  foreignKey: 'user_id',
-  onDelete: 'CASCADE'
-});
-
-Category.hasMany(BudgetLimit, {
-  foreignKey: 'category_id'
-});
-
-BudgetLimit.belongsTo(User, {
-  foreignKey: 'user_id'
-});
-
-BudgetLimit.belongsTo(Category, {
-  foreignKey: 'category_id'
-});
+setupAssociations({ User, RefreshToken, Category, Transaction, BudgetLimit });
 
 app.use(cors({
   origin(origin, callback) {
