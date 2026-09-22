@@ -42,7 +42,6 @@ Backend:
 ```powershell
 Set-Location "d:\Унік\4 курс\1 семестр\практика\FinTrack\backend"
 npm install
-npm run seed
 npm run dev
 ```
 

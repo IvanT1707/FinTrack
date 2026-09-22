@@ -20,6 +20,7 @@ const { createTransactionRouter } = require('./routes/transactionRoutes');
 const { createBudgetLimitRouter } = require('./routes/budgetLimitRoutes');
 const { createForecastRouter } = require('./routes/forecastRoutes');
 const { createAnalyticsRouter } = require('./routes/analyticsRoutes');
+const { seedDefaultCategories } = require('./seed/defaultCategories');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -103,6 +104,9 @@ async function startServer() {
 
     await sequelize.sync({ force: false });
     console.log('Database tables synced');
+
+    await seedDefaultCategories();
+    console.log('Default categories ready');
 
     app.listen(port, () => {
       console.log(`FinTrack API is running on port ${port}`);
