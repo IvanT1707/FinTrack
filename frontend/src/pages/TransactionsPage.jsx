@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import api from '../services/api'
+import Topbar from '../components/Topbar'
 
 const emptyForm = { category_id: '', amount: '', type: 'expense', description: '', transaction_date: new Date().toISOString().slice(0, 10) }
 
@@ -14,6 +14,7 @@ export default function TransactionsPage() {
   const [showForm, setShowForm] = useState(false)
   const [pagination, setPagination] = useState(null)
   const [error, setError] = useState('')
+  const user = JSON.parse(localStorage.getItem('fintrack_user') || 'null')
 
   async function loadData() {
     try {
@@ -68,7 +69,7 @@ export default function TransactionsPage() {
   }
 
   return <main className="app-shell page-shell">
-    <header className="topbar"><Link className="brand-lockup" to="/dashboard"><span className="brand-dot" /> FinTrack</Link><nav><Link to="/dashboard">Огляд</Link><Link className="nav-active" to="/transactions">Транзакції</Link><Link to="/categories">Категорії</Link><Link to="/budget">Бюджет</Link></nav></header>
+    <Topbar user={user} />
     <div className="content-wrap">
       <section className="page-heading"><div><p className="eyebrow">ОБЛІК ОПЕРАЦІЙ</p><h1>Транзакції</h1><p className="muted">Додавайте, фільтруйте та редагуйте свої доходи й витрати.</p></div><button className="primary-button cta-button" onClick={openCreate}><Plus size={17} /> Нова транзакція</button></section>
       {error && <div className="alert">{error}</div>}

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import {
   ArrowUpRight,
   BarChart3,
@@ -29,6 +29,7 @@ import {
   YAxis,
 } from 'recharts'
 import api from './services/api'
+import Topbar from './components/Topbar'
 import './App.css'
 
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage'))
@@ -68,11 +69,13 @@ function LoginScreen({ onLogin }) {
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
 
   async function handleSubmit(event) {
     event.preventDefault()
     setLoading(true)
     setError('')
+    setSuccessMessage('')
 
     try {
       const data = await apiRequest(mode === 'login' ? '/auth/login' : '/auth/register', {
@@ -81,7 +84,7 @@ function LoginScreen({ onLogin }) {
       })
       if (mode === 'register') {
         setMode('login')
-        setError('Account created. Sign in with your new credentials.')
+        setSuccessMessage('Акаунт успішно створено. Увійдіть, використовуючи ваші дані.')
       } else {
         localStorage.setItem('fintrack_access_token', data.access_token)
         localStorage.setItem('fintrack_refresh_token', data.refresh_token)
@@ -124,9 +127,10 @@ function LoginScreen({ onLogin }) {
             <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label>
             <label>Пароль<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required /></label>
             {error && <div className="form-error" role="alert">{error}</div>}
+            {successMessage && <div className="form-success" role="status">{successMessage}</div>}
             <button className="primary-button" disabled={loading}>{loading ? 'Зачекайте…' : mode === 'login' ? 'Увійти' : 'Створити акаунт'} <ArrowUpRight size={17} /></button>
           </form>
-          <button className="auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}>
+          <button className="auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setSuccessMessage('') }}>
             {mode === 'login' ? 'Немає акаунта? Створити' : 'Вже маєте акаунт? Увійти'}
           </button>
           <div className="auth-note"><ShieldCheck size={16} /> Your financial data stays tied to your account.</div>
@@ -230,6 +234,10 @@ function Dashboard({ user, onLogout }) {
     changePeriod({ month: next.getMonth() + 1, year: next.getFullYear() })
   }
 
+  function scrollToSection(sectionId) {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   const summary = dashboard?.summary
   const chartData = dashboard?.byCategory?.categories || []
   const trendData = dashboard?.trend?.months || []
@@ -237,11 +245,7 @@ function Dashboard({ user, onLogout }) {
   const budgetData = dashboard?.budgets || []
 
   return <main className="app-shell">
-    <header className="topbar">
-      <Link className="brand-lockup" to="/dashboard"><span className="brand-dot" /> FinTrack</Link>
-      <nav><Link className="nav-active" to="/dashboard">Огляд</Link><Link to="#spending">Витрати</Link><Link to="#limits">Ліміти</Link><Link to="/transactions">Транзакції</Link><Link to="/budget">Бюджет</Link></nav>
-      <div className="user-menu"><span className="avatar">{user?.full_name?.charAt(0) || 'U'}</span><span className="user-name">{user?.full_name || user?.email}</span><button className="icon-button" title="Sign out" onClick={logout}><LogOut size={17} /></button></div>
-    </header>
+    <Topbar user={user} onLogout={onLogout} onSectionNavigate={scrollToSection} showDashboardSections />
 
     <div className="content-wrap">
       <section className="page-heading" id="overview">
@@ -270,7 +274,7 @@ function Dashboard({ user, onLogout }) {
         </section>
       </>}
     </div>
-    <nav className="mobile-tabs"><a href="#overview">Огляд</a><a href="#spending">Витрати</a><button onClick={() => setShowTransactionForm(true)}><Plus size={20} /></button><a href="#limits">Ліміти</a><button onClick={logout}><LogOut size={17} /></button></nav>
+    <nav className="mobile-tabs"><button onClick={() => document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth' })}>Огляд</button><button onClick={() => scrollToSection('spending')}>Витрати</button><button onClick={() => setShowTransactionForm(true)}><Plus size={20} /></button><button onClick={() => scrollToSection('limits')}>Ліміти</button><button onClick={logout}><LogOut size={17} /></button></nav>
     {showTransactionForm && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTransactionForm(false) }}><form className="transaction-modal" onSubmit={createTransaction}><div className="modal-heading"><div><p className="eyebrow">ШВИДКА ДІЯ</p><h2>Нова транзакція</h2></div><button type="button" className="icon-button" onClick={() => setShowTransactionForm(false)}>×</button></div><label>Тип<select value={transactionForm.type} onChange={(event) => setTransactionForm({ ...transactionForm, type: event.target.value })}><option value="expense">Витрата</option><option value="income">Дохід</option></select></label><label>Категорія<select value={transactionForm.category_id} onChange={(event) => setTransactionForm({ ...transactionForm, category_id: event.target.value })} required><option value="">Оберіть категорію</option>{categories.filter((category) => category.type === transactionForm.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Сума<input type="number" min="0.01" step="0.01" value={transactionForm.amount} onChange={(event) => setTransactionForm({ ...transactionForm, amount: event.target.value })} required /></label><label>Дата<input type="date" value={transactionForm.transaction_date} onChange={(event) => setTransactionForm({ ...transactionForm, transaction_date: event.target.value })} required /></label><label>Опис<input value={transactionForm.description} onChange={(event) => setTransactionForm({ ...transactionForm, description: event.target.value })} placeholder="Наприклад, покупки в магазині" /></label><button className="primary-button" type="submit">Зберегти транзакцію <ArrowUpRight size={17} /></button></form></div>}
   </main>
 }
